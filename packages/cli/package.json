@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc --build",
+    "predev": "pnpm --filter @pr-pilot/core build",
     "dev": "tsx src/cli.ts"
   },
   "dependencies": {
