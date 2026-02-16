@@ -1,4 +1,5 @@
-import type { GitHubItem, VisionAlignment } from './types.js';
+import type { GitHubItem, VisionAlignment, BatchOptions } from './types.js';
+import { DEFAULT_BATCH_OPTIONS } from './types.js';
 
 function isIssue(item: GitHubItem): item is import('./types.js').GitHubIssue {
   return 'isPullRequest' in item;
@@ -8,17 +9,42 @@ function getType(item: GitHubItem): 'pr' | 'issue' {
   return isIssue(item) ? 'issue' : 'pr';
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  maxRetries: number,
+): Promise<Response> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url, init);
+    if (response.status === 429) {
+      if (attempt >= maxRetries) {
+        throw new Error(`OpenAI rate limit (429) after ${maxRetries + 1} attempts`);
+      }
+      const waitMs = Math.min(1000 * Math.pow(2, attempt + 1), 30000);
+      await sleep(waitMs);
+      continue;
+    }
+    return response;
+  }
+  throw new Error('fetchWithRetry exhausted');
+}
+
 export async function checkVisionAlignment(
   items: GitHubItem[],
   visionDoc: string,
   apiKey: string,
   model = 'gpt-4o-mini',
+  batchOptions?: Partial<BatchOptions>,
 ): Promise<VisionAlignment[]> {
+  const opts = { ...DEFAULT_BATCH_OPTIONS, ...batchOptions, batchSize: batchOptions?.batchSize ?? 10 };
   const results: VisionAlignment[] = [];
-  const batchSize = 10;
 
-  for (let i = 0; i < items.length; i += batchSize) {
-    const batch = items.slice(i, i + batchSize);
+  for (let i = 0; i < items.length; i += opts.batchSize) {
+    const batch = items.slice(i, i + opts.batchSize);
     const itemDescriptions = batch
       .map(
         (item, idx) =>
@@ -40,19 +66,23 @@ ${itemDescriptions}
 Respond in JSON format as an array:
 [{"index": 1, "alignment": "aligned"|"tangential"|"misaligned", "score": 0.0-1.0, "reasoning": "...", "relevantSection": "..." or null}]`;
 
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+    const response = await fetchWithRetry(
+      'https://api.openai.com/v1/chat/completions',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          model,
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.3,
+          response_format: { type: 'json_object' },
+        }),
       },
-      body: JSON.stringify({
-        model,
-        messages: [{ role: 'user', content: prompt }],
-        temperature: 0.3,
-        response_format: { type: 'json_object' },
-      }),
-    });
+      opts.maxRetries,
+    );
 
     const data = (await response.json()) as {
       choices: { message: { content: string } }[];
@@ -79,7 +109,6 @@ Respond in JSON format as an array:
         });
       }
     } catch {
-      // If parsing fails, mark all as tangential
       for (const item of batch) {
         results.push({
           number: item.number,
@@ -91,6 +120,13 @@ Respond in JSON format as an array:
           relevantVisionSection: null,
         });
       }
+    }
+
+    opts.onProgress?.(results.length, items.length, 'vision');
+
+    // Delay between batches
+    if (i + opts.batchSize < items.length) {
+      await sleep(opts.delayMs);
     }
   }
 

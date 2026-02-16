@@ -1,10 +1,10 @@
 import { createHash } from 'crypto';
 import { readFileSync, writeFileSync, existsSync } from 'fs';
-import type { EmbeddedItem } from './types.js';
+import type { EmbeddedItem, BatchOptions } from './types.js';
+import { DEFAULT_BATCH_OPTIONS } from './types.js';
 
 const CACHE_FILE = '.pr-pilot-cache.json';
 const MAX_BODY_LENGTH = 2000;
-const MAX_BATCH_SIZE = 2048;
 
 interface CacheEntry {
   number: number;
@@ -42,11 +42,38 @@ function saveCache(items: EmbeddedItem[]): void {
   writeFileSync(CACHE_FILE, JSON.stringify(items, null, 2));
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithRetry(
+  url: string,
+  init: RequestInit,
+  maxRetries: number,
+): Promise<Response> {
+  let lastError: Error | null = null;
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    const response = await fetch(url, init);
+    if (response.status === 429) {
+      if (attempt >= maxRetries) {
+        throw new Error(`OpenAI rate limit (429) after ${maxRetries + 1} attempts`);
+      }
+      const waitMs = Math.min(1000 * Math.pow(2, attempt + 1), 30000);
+      await sleep(waitMs);
+      continue;
+    }
+    return response;
+  }
+  throw lastError ?? new Error('fetchWithRetry exhausted');
+}
+
 export async function generateEmbeddings(
   items: { number: number; type: 'pr' | 'issue'; title: string; body: string }[],
   apiKey: string,
   model = 'text-embedding-3-small',
+  batchOptions?: Partial<BatchOptions>,
 ): Promise<EmbeddedItem[]> {
+  const opts = { ...DEFAULT_BATCH_OPTIONS, ...batchOptions };
   const cache = loadCache();
   const results: EmbeddedItem[] = [];
   const toEmbed: { index: number; text: string; item: typeof items[number] }[] = [];
@@ -72,19 +99,29 @@ export async function generateEmbeddings(
     }
   }
 
-  // Batch embed
-  for (let i = 0; i < toEmbed.length; i += MAX_BATCH_SIZE) {
-    const batch = toEmbed.slice(i, i + MAX_BATCH_SIZE);
+  if (toEmbed.length === 0) {
+    opts.onProgress?.(items.length, items.length, 'embeddings');
+    return results;
+  }
+
+  // Batch embed with delays and retry
+  let embeddedSoFar = items.length - toEmbed.length;
+  for (let i = 0; i < toEmbed.length; i += opts.batchSize) {
+    const batch = toEmbed.slice(i, i + opts.batchSize);
     const texts = batch.map((b) => b.text);
 
-    const response = await fetch('https://api.openai.com/v1/embeddings', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
+    const response = await fetchWithRetry(
+      'https://api.openai.com/v1/embeddings',
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ input: texts, model }),
       },
-      body: JSON.stringify({ input: texts, model }),
-    });
+      opts.maxRetries,
+    );
 
     const data = (await response.json()) as {
       data?: { embedding: number[]; index: number }[];
@@ -99,6 +136,17 @@ export async function generateEmbeddings(
     for (const d of data.data) {
       const entry = batch[d.index];
       results[entry.index].embedding = d.embedding;
+    }
+
+    embeddedSoFar += batch.length;
+    opts.onProgress?.(embeddedSoFar, items.length, 'embeddings');
+
+    // Save cache after each batch for resumability
+    saveCache(results);
+
+    // Delay between batches (skip after last)
+    if (i + opts.batchSize < toEmbed.length) {
+      await sleep(opts.delayMs);
     }
   }
 

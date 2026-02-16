@@ -15,7 +15,7 @@ import { render } from 'ink';
 import App from './tui/app.js';
 import { mockData } from './tui/mock-data.js';
 import type { PilotConfig } from '@pr-pilot/core';
-import { DEFAULT_CONFIG, analyze } from '@pr-pilot/core';
+import { DEFAULT_CONFIG, analyze, loadState, getStateStatus } from '@pr-pilot/core';
 
 const program = new Command();
 
@@ -35,7 +35,22 @@ program
   .option('--openai-key <key>', 'OpenAI API key (or OPENAI_API_KEY env)')
   .option('--max-items <n>', 'Maximum items to process', parseInt)
   .option('--include-closed <days>', 'Include items closed within N days', parseInt)
+  .option('--batch-size <n>', 'Items per embedding batch (default 50)', parseInt)
+  .option('--continue', 'Continue from saved state (default if state exists)')
+  .option('--fresh', 'Ignore saved state, start over')
+  .option('--status', 'Print current analysis state without running')
   .action(async (repo: string, opts: Record<string, unknown>) => {
+    // --status: just print state and exit
+    if (opts.status) {
+      const state = loadState();
+      if (!state) {
+        console.log('No saved state found. Run a scan first.');
+      } else {
+        console.log(getStateStatus(state));
+      }
+      return;
+    }
+
     const config: PilotConfig = {
       githubToken: (opts.token as string) || process.env.GITHUB_TOKEN || '',
       openaiApiKey: (opts.openaiKey as string) || process.env.OPENAI_API_KEY || '',
@@ -58,8 +73,39 @@ program
       process.exit(1);
     }
 
+    const fresh = opts.fresh as boolean | undefined;
+    const batchSize = (opts.batchSize as number) ?? 50;
+
     console.log(`Analyzing ${repo}...`);
-    const result = await analyze(config);
+    if (fresh) {
+      console.log('Starting fresh (ignoring saved state)');
+    } else {
+      const existing = loadState();
+      if (existing && existing.repo === repo) {
+        console.log(`Resuming from saved state (${getStateStatus(existing).split('\n').slice(-2, -1)[0]})`);
+      }
+    }
+
+    const result = await analyze(config, {
+      fresh: !!fresh,
+      batchSize,
+      onProgress: (done, total, phase) => {
+        if (total > 0) {
+          process.stdout.write(`\r  [${phase}] ${done} of ${total} items`);
+        } else {
+          process.stdout.write(`\r  [${phase}]...`);
+        }
+      },
+    });
+
+    // Clear progress line
+    process.stdout.write('\r' + ' '.repeat(60) + '\r');
+
+    console.log(`\n✅ Analysis complete!`);
+    console.log(`  PRs: ${result.totalPRs}, Issues: ${result.totalIssues}`);
+    console.log(`  Duplicate clusters: ${result.duplicateClusters.length}`);
+    console.log(`  Vision alignments: ${result.visionAlignments.length}`);
+    console.log(`  State saved to .pr-pilot-state.json\n`);
 
     if (opts.json) {
       console.log(JSON.stringify(result, null, 2));
@@ -67,6 +113,18 @@ program
     }
 
     render(React.createElement(App, { data: result }));
+  });
+
+program
+  .command('status')
+  .description('Show current analysis state')
+  .action(() => {
+    const state = loadState();
+    if (!state) {
+      console.log('No saved state found. Run a scan first.');
+      return;
+    }
+    console.log(getStateStatus(state));
   });
 
 program

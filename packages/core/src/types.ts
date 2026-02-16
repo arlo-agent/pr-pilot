@@ -137,6 +137,76 @@ export interface PilotConfig {
   includeClosedDays: number;   // include items closed within N days (0 = open only)
 }
 
+// ============================================================================
+// Persistent State (for resumable analysis)
+// ============================================================================
+
+export interface ItemState {
+  number: number;
+  type: 'pr' | 'issue';
+  title: string;
+  fetched: boolean;
+  embedded: boolean;
+  visionChecked: boolean;
+}
+
+export interface AnalysisState {
+  repo: string;
+  lastRunAt: string;
+  items: ItemState[];
+  prs: GitHubPR[];
+  issues: GitHubIssue[];
+  embeddedItems: EmbeddedItem[];
+  visionAlignments: VisionAlignment[];
+  progress: {
+    totalPRs: number;
+    totalIssues: number;
+    fetchedPRs: number;
+    fetchedIssues: number;
+    embeddedCount: number;
+    visionCheckedCount: number;
+    completed: boolean;
+  };
+}
+
+export function createEmptyState(repo: string): AnalysisState {
+  return {
+    repo,
+    lastRunAt: new Date().toISOString(),
+    items: [],
+    prs: [],
+    issues: [],
+    embeddedItems: [],
+    visionAlignments: [],
+    progress: {
+      totalPRs: 0,
+      totalIssues: 0,
+      fetchedPRs: 0,
+      fetchedIssues: 0,
+      embeddedCount: 0,
+      visionCheckedCount: 0,
+      completed: false,
+    },
+  };
+}
+
+// ============================================================================
+// Batch Processing Options
+// ============================================================================
+
+export interface BatchOptions {
+  batchSize: number;
+  delayMs: number;
+  maxRetries: number;
+  onProgress?: (done: number, total: number, phase: string) => void;
+}
+
+export const DEFAULT_BATCH_OPTIONS: BatchOptions = {
+  batchSize: 50,
+  delayMs: 1500,
+  maxRetries: 3,
+};
+
 export const DEFAULT_CONFIG: Partial<PilotConfig> = {
   duplicateThreshold: 0.85,
   relatedThreshold: 0.70,
