@@ -5,9 +5,8 @@ import React from 'react';
 import { render } from 'ink';
 import App from './tui/app.js';
 import { mockData } from './tui/mock-data.js';
-import type { PilotConfig } from './core/types.js';
-import { DEFAULT_CONFIG } from './core/types.js';
-import { analyze } from './core/analyzer.js';
+import type { PilotConfig } from '@pr-pilot/core';
+import { DEFAULT_CONFIG, analyze } from '@pr-pilot/core';
 
 const program = new Command();
 

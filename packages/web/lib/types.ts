@@ -10,4 +10,4 @@ export type {
   EmbeddedItem,
   SimilarityResult,
   PilotConfig,
-} from '../../core/types';
+} from '@pr-pilot/core';

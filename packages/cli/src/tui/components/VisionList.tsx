@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, Text, useInput } from 'ink';
-import type { VisionAlignment } from '../../core/types.js';
+import type { VisionAlignment } from '@pr-pilot/core';
 
 interface VisionListProps {
   alignments: VisionAlignment[];

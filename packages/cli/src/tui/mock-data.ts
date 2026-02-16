@@ -1,4 +1,4 @@
-import type { AnalysisResult } from '../core/types.js';
+import type { AnalysisResult } from '@pr-pilot/core';
 
 export const mockData: AnalysisResult = {
   repo: 'acme/widgets',

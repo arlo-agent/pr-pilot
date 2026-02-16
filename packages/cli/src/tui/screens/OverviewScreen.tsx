@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { AnalysisResult } from '../../core/types.js';
+import type { AnalysisResult } from '@pr-pilot/core';
 
 interface OverviewScreenProps {
   data: AnalysisResult;

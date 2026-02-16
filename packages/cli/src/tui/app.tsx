@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Box, useInput, useApp } from 'ink';
-import type { AnalysisResult } from '../core/types.js';
+import type { AnalysisResult } from '@pr-pilot/core';
 import Header, { TABS, type TabName } from './components/Header.js';
 import OverviewScreen from './screens/OverviewScreen.js';
 import ClusterList from './components/ClusterList.js';

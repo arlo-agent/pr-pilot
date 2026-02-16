@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import type { PRQualitySignals } from '../../core/types.js';
+import type { PRQualitySignals } from '@pr-pilot/core';
 
 interface RankingTableProps {
   rankings: PRQualitySignals[];

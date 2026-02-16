@@ -1,6 +1,6 @@
 import React from 'react';
 import { Box, Text, useInput } from 'ink';
-import type { DuplicateCluster, PRQualitySignals } from '../../core/types.js';
+import type { DuplicateCluster, PRQualitySignals } from '@pr-pilot/core';
 
 interface ClusterDetailProps {
   cluster: DuplicateCluster;
