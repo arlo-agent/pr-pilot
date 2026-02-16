@@ -1,5 +1,14 @@
 #!/usr/bin/env node
-import 'dotenv/config';
+import dotenv from 'dotenv';
+import { resolve, dirname } from 'path';
+import { fileURLToPath } from 'url';
+import { existsSync } from 'fs';
+
+// Load .env from package dir or monorepo root
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const rootEnv = resolve(__dirname, '../../..', '.env');
+const localEnv = resolve(__dirname, '..', '.env');
+dotenv.config({ path: existsSync(localEnv) ? localEnv : rootEnv });
 import { Command } from 'commander';
 import React from 'react';
 import { render } from 'ink';
