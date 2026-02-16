@@ -80,7 +80,7 @@ CLI binary (`pr-pilot`) with two commands:
 - `pr-pilot scan <owner/repo>` — run full analysis
 - `pr-pilot demo` — launch TUI with mock data
 
-Loads `.env` via `dotenv/config`.
+Loads `.env` from the monorepo root or `packages/cli/` via dotenv.
 
 ### `@pr-pilot/web`
 Next.js 14 dashboard with Tailwind CSS. Paste JSON output from `pr-pilot scan --json` to visualize results.
