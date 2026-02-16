@@ -1,14 +1,14 @@
 'use client';
 
 import { createContext, useContext, useState, ReactNode } from 'react';
-import { AnalysisResult } from './types';
+import { AnalysisResult } from '@/lib/types';
 
-interface AnalysisContextType {
+interface AnalysisContextValue {
   data: AnalysisResult | null;
-  setData: (data: AnalysisResult | null) => void;
+  setData: (data: AnalysisResult) => void;
 }
 
-const AnalysisContext = createContext<AnalysisContextType>({ data: null, setData: () => {} });
+const AnalysisContext = createContext<AnalysisContextValue | undefined>(undefined);
 
 export function AnalysisProvider({ children }: { children: ReactNode }) {
   const [data, setData] = useState<AnalysisResult | null>(null);
@@ -19,6 +19,8 @@ export function AnalysisProvider({ children }: { children: ReactNode }) {
   );
 }
 
-export function useAnalysis() {
-  return useContext(AnalysisContext);
+export function useAnalysis(): AnalysisContextValue {
+  const ctx = useContext(AnalysisContext);
+  if (!ctx) throw new Error('useAnalysis must be used within AnalysisProvider');
+  return ctx;
 }
