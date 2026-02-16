@@ -103,7 +103,9 @@ program
     console.log(`Batch size: ${batchSize}${shouldPause ? ' (will pause between phases)' : ' (no-pause mode)'}\n`);
 
     let lastPhase = '';
-    const result = await analyze(config, {
+    let result;
+    try {
+    result = await analyze(config, {
       fresh: !!fresh,
       batchSize,
       pauseBetweenPhases: shouldPause,
@@ -168,6 +170,24 @@ program
         }
       },
     });
+    } catch (err: unknown) {
+      const error = err as Error & { rateLimited?: boolean };
+      console.log('\n');
+      if (error.rateLimited) {
+        console.log(`\n⚠️  Rate limited by OpenAI. Progress has been saved.`);
+        const state = loadState();
+        if (state) console.log(`   ${getStateStatus(state)}`);
+        console.log(`\n   Run the same command again to resume from where you left off.`);
+        console.log(`   Tip: try a smaller batch size: --batch-size 5\n`);
+      } else {
+        console.error(`\n❌ Error: ${error.message}`);
+        const state = loadState();
+        if (state) {
+          console.log(`   Progress saved. Run again to resume.`);
+        }
+      }
+      process.exit(1);
+    }
 
     // Clear progress line
     process.stdout.write('\n');

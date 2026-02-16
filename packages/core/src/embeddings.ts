@@ -55,7 +55,9 @@ async function fetchWithRetry(
     const response = await fetch(url, init);
     if (response.status === 429) {
       if (attempt >= maxRetries) {
-        throw new Error(`OpenAI rate limit (429) after ${maxRetries + 1} attempts`);
+        const err = new Error(`OpenAI rate limit (429) after ${maxRetries + 1} attempts. State saved — run again to resume.`);
+        (err as Error & { rateLimited: boolean }).rateLimited = true;
+        throw err;
       }
       // Read retry-after header, or use exponential backoff starting at 10s
       const retryAfter = response.headers.get('retry-after');

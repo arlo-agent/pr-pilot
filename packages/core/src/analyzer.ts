@@ -225,10 +225,11 @@ export async function analyze(
 
     onProgress?.(totalProcessed, allItemInputs.length, `wave ${waveNum} — embedding`);
 
-    // a) Embed this wave
+    // a) Embed this wave (API batches of 10 to avoid rate limits)
+    const embeddingBatchSize = Math.min(batchSize, 10);
     const waveEmbedded = await generateEmbeddings(waveItems, cfg.openaiApiKey, cfg.embeddingModel, {
-      batchSize,  // send the whole wave as one embedding batch
-      delayMs: 1500,
+      batchSize: embeddingBatchSize,
+      delayMs: 2000,
       maxRetries: 5,
       onProgress: (done, total, phase) => {
         onProgress?.(allEmbedded.length + done, allItemInputs.length, `wave ${waveNum} — ${phase}`);
