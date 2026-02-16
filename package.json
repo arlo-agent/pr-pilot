@@ -6,7 +6,7 @@
     "build": "pnpm -r build",
     "dev:cli": "pnpm --filter @pr-pilot/cli dev",
     "dev:web": "pnpm --filter @pr-pilot/web dev",
-    "test": "pnpm --filter @pr-pilot/cli test",
+    "test": "pnpm -r test",
     "lint": "pnpm -r lint",
     "clean": "pnpm -r exec rm -rf dist .next tsconfig.tsbuildinfo"
   },
