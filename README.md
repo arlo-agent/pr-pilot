@@ -22,9 +22,15 @@ Results display in a terminal TUI (built with [Ink](https://github.com/vadimdeme
 npm install
 npm run build
 
-# Run against a repo
+# Set up tokens (copy and edit .env)
+cp .env.example .env
+# Then add your GITHUB_TOKEN and OPENAI_API_KEY to .env
+
+# Or use environment variables directly
 export GITHUB_TOKEN=ghp_...
 export OPENAI_API_KEY=sk-...
+
+# Run against a repo
 pr-pilot scan owner/repo
 
 # With vision alignment

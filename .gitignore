@@ -2,3 +2,4 @@ node_modules/
 dist/
 .next/
 .pr-pilot-cache.json
+.env
