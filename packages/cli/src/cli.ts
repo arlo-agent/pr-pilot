@@ -3,12 +3,14 @@ import dotenv from 'dotenv';
 import { resolve, dirname } from 'path';
 import { fileURLToPath } from 'url';
 import { existsSync } from 'fs';
+import { createInterface } from 'readline';
 
 // Load .env from package dir or monorepo root
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootEnv = resolve(__dirname, '../../..', '.env');
 const localEnv = resolve(__dirname, '..', '.env');
 dotenv.config({ path: existsSync(localEnv) ? localEnv : rootEnv });
+
 import { Command } from 'commander';
 import React from 'react';
 import { render } from 'ink';
@@ -16,6 +18,16 @@ import App from './tui/app.js';
 import { mockData } from './tui/mock-data.js';
 import type { PilotConfig } from '@pr-pilot/core';
 import { DEFAULT_CONFIG, analyze, loadState, getStateStatus } from '@pr-pilot/core';
+
+function ask(question: string): Promise<string> {
+  const rl = createInterface({ input: process.stdin, output: process.stdout });
+  return new Promise((resolve) => {
+    rl.question(question, (answer) => {
+      rl.close();
+      resolve(answer.trim().toLowerCase());
+    });
+  });
+}
 
 const program = new Command();
 
@@ -38,6 +50,7 @@ program
   .option('--batch-size <n>', 'Items per embedding batch (default 50)', parseInt)
   .option('--continue', 'Continue from saved state (default if state exists)')
   .option('--fresh', 'Ignore saved state, start over')
+  .option('--no-pause', 'Run all batches without pausing')
   .option('--status', 'Print current analysis state without running')
   .action(async (repo: string, opts: Record<string, unknown>) => {
     // --status: just print state and exit
@@ -75,6 +88,7 @@ program
 
     const fresh = opts.fresh as boolean | undefined;
     const batchSize = (opts.batchSize as number) ?? 50;
+    const shouldPause = opts.pause !== false; // --no-pause disables
 
     console.log(`Analyzing ${repo}...`);
     if (fresh) {
@@ -82,16 +96,43 @@ program
     } else {
       const existing = loadState();
       if (existing && existing.repo === repo) {
-        console.log(`Resuming from saved state (${getStateStatus(existing).split('\n').slice(-2, -1)[0]})`);
+        const status = getStateStatus(existing);
+        console.log(`Resuming from saved state:\n${status}`);
       }
     }
+    console.log(`Batch size: ${batchSize}${shouldPause ? ' (will pause between phases)' : ' (no-pause mode)'}\n`);
 
+    let lastPhase = '';
     const result = await analyze(config, {
       fresh: !!fresh,
       batchSize,
+      pauseBetweenPhases: shouldPause,
+      onPause: async (phase, done, total) => {
+        console.log(`\n\n📊 Progress: ${done} of ${total} items (${phase})`);
+        console.log('   State saved to .pr-pilot-state.json\n');
+        const answer = await ask('   [c]ontinue / [s]tatus / [q]uit? ');
+        if (answer === 'q' || answer === 'quit') {
+          console.log('\n👋 Stopped. Run again to resume from saved state.');
+          process.exit(0);
+        }
+        if (answer === 's' || answer === 'status') {
+          const state = loadState();
+          if (state) console.log('\n' + getStateStatus(state) + '\n');
+          const answer2 = await ask('   [c]ontinue / [q]uit? ');
+          if (answer2 === 'q' || answer2 === 'quit') {
+            console.log('\n👋 Stopped. Run again to resume from saved state.');
+            process.exit(0);
+          }
+        }
+      },
       onProgress: (done, total, phase) => {
+        if (phase !== lastPhase) {
+          if (lastPhase) process.stdout.write('\n');
+          lastPhase = phase;
+        }
         if (total > 0) {
-          process.stdout.write(`\r  [${phase}] ${done} of ${total} items`);
+          const pct = Math.round((done / total) * 100);
+          process.stdout.write(`\r  [${phase}] ${done}/${total} (${pct}%)`);
         } else {
           process.stdout.write(`\r  [${phase}]...`);
         }
@@ -99,7 +140,7 @@ program
     });
 
     // Clear progress line
-    process.stdout.write('\r' + ' '.repeat(60) + '\r');
+    process.stdout.write('\n');
 
     console.log(`\n✅ Analysis complete!`);
     console.log(`  PRs: ${result.totalPRs}, Issues: ${result.totalIssues}`);

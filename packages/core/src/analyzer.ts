@@ -78,6 +78,8 @@ Provide a concise 2-3 sentence summary with actionable recommendations.`;
 export interface AnalyzeOptions {
   fresh?: boolean;
   batchSize?: number;
+  pauseBetweenPhases?: boolean;
+  onPause?: (phase: string, done: number, total: number) => Promise<void>;
   onProgress?: (done: number, total: number, phase: string) => void;
 }
 
@@ -87,7 +89,7 @@ export async function analyze(
 ): Promise<AnalysisResult> {
   const cfg = { ...DEFAULT_CONFIG, ...config } as PilotConfig;
   const [owner, repo] = cfg.repo.split('/');
-  const { fresh = false, batchSize = 50, onProgress } = options ?? {};
+  const { fresh = false, batchSize = 50, pauseBetweenPhases = false, onPause, onProgress } = options ?? {};
 
   // Load or create state
   let state: AnalysisState;
@@ -119,6 +121,12 @@ export async function analyze(
     state.progress.fetchedIssues = state.issues.length;
     state.progress.totalIssues = state.issues.length;
     saveState(state);
+  }
+
+  // Pause after fetching
+  if (pauseBetweenPhases && onPause) {
+    const total = state.prs.length + state.issues.length;
+    await onPause('fetching', total, total);
   }
 
   // Update item list
@@ -162,6 +170,11 @@ export async function analyze(
     item.embedded = true;
   }
   saveState(state);
+
+  // Pause after embeddings
+  if (pauseBetweenPhases && onPause) {
+    await onPause('embeddings', state.progress.embeddedCount, totalItems);
+  }
 
   // 3. Find similar pairs and cluster
   const pairs = findSimilarPairs(embedded, cfg.duplicateThreshold);

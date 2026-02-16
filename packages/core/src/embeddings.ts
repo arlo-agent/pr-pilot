@@ -51,20 +51,32 @@ async function fetchWithRetry(
   init: RequestInit,
   maxRetries: number,
 ): Promise<Response> {
-  let lastError: Error | null = null;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     const response = await fetch(url, init);
     if (response.status === 429) {
       if (attempt >= maxRetries) {
         throw new Error(`OpenAI rate limit (429) after ${maxRetries + 1} attempts`);
       }
-      const waitMs = Math.min(1000 * Math.pow(2, attempt + 1), 30000);
+      // Read retry-after header, or use exponential backoff starting at 10s
+      const retryAfter = response.headers.get('retry-after');
+      const waitMs = retryAfter
+        ? parseInt(retryAfter, 10) * 1000
+        : Math.min(10000 * Math.pow(2, attempt), 120000);
+      console.log(`\n  ⏳ Rate limited, waiting ${Math.round(waitMs / 1000)}s (attempt ${attempt + 1}/${maxRetries + 1})...`);
       await sleep(waitMs);
       continue;
     }
     return response;
   }
-  throw lastError ?? new Error('fetchWithRetry exhausted');
+  throw new Error('fetchWithRetry exhausted');
+}
+
+export interface EmbeddingProgress {
+  cached: number;
+  embedded: number;
+  total: number;
+  batchesCompleted: number;
+  totalBatches: number;
 }
 
 export async function generateEmbeddings(
@@ -99,16 +111,22 @@ export async function generateEmbeddings(
     }
   }
 
+  const cachedCount = items.length - toEmbed.length;
   if (toEmbed.length === 0) {
     opts.onProgress?.(items.length, items.length, 'embeddings');
     return results;
   }
 
+  const totalBatches = Math.ceil(toEmbed.length / opts.batchSize);
+
   // Batch embed with delays and retry
-  let embeddedSoFar = items.length - toEmbed.length;
+  let embeddedSoFar = cachedCount;
   for (let i = 0; i < toEmbed.length; i += opts.batchSize) {
+    const batchNum = Math.floor(i / opts.batchSize) + 1;
     const batch = toEmbed.slice(i, i + opts.batchSize);
     const texts = batch.map((b) => b.text);
+
+    opts.onProgress?.(embeddedSoFar, items.length, `embeddings batch ${batchNum}/${totalBatches}`);
 
     const response = await fetchWithRetry(
       'https://api.openai.com/v1/embeddings',
@@ -130,6 +148,8 @@ export async function generateEmbeddings(
 
     if (!response.ok || !data.data) {
       const msg = data.error?.message ?? `HTTP ${response.status}`;
+      // Save what we have so far before throwing
+      saveCache(results);
       throw new Error(`OpenAI embeddings API error: ${msg}`);
     }
 
