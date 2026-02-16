@@ -11,9 +11,15 @@
     "clean": "pnpm -r exec rm -rf dist .next tsconfig.tsbuildinfo"
   },
   "devDependencies": {
-    "typescript": "^5.4.0"
+    "typescript": "^5.9.3"
   },
   "engines": {
     "pnpm": ">=9"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": [
+      "esbuild",
+      "sharp"
+    ]
   }
 }

@@ -1,6 +1,9 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-gray-950: oklch(0.129 0.042 264.695);
+  --color-gray-100: oklch(0.968 0.007 264.536);
+}
 
 body {
   @apply bg-gray-950 text-gray-100;
