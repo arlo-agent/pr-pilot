@@ -6,6 +6,7 @@ import App from './tui/app.js';
 import { mockData } from './tui/mock-data.js';
 import type { PilotConfig } from './core/types.js';
 import { DEFAULT_CONFIG } from './core/types.js';
+import { analyze } from './core/analyzer.js';
 
 const program = new Command();
 
@@ -39,10 +40,17 @@ program
       includeClosedDays: (opts.includeClosed as number) ?? DEFAULT_CONFIG.includeClosedDays!,
     };
 
-    // TODO: Replace mock data with real analysis engine when available
-    // For now, use mock data for TUI development
-    const _config = config; // will be used by engine
-    const result = { ...mockData, repo };
+    if (!config.githubToken) {
+      console.error('Error: GitHub token required (--token or GITHUB_TOKEN env)');
+      process.exit(1);
+    }
+    if (!config.openaiApiKey) {
+      console.error('Error: OpenAI API key required (--openai-key or OPENAI_API_KEY env)');
+      process.exit(1);
+    }
+
+    console.log(`Analyzing ${repo}...`);
+    const result = await analyze(config);
 
     if (opts.json) {
       console.log(JSON.stringify(result, null, 2));
