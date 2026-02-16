@@ -87,8 +87,14 @@ export async function generateEmbeddings(
     });
 
     const data = (await response.json()) as {
-      data: { embedding: number[]; index: number }[];
+      data?: { embedding: number[]; index: number }[];
+      error?: { message: string; type: string };
     };
+
+    if (!response.ok || !data.data) {
+      const msg = data.error?.message ?? `HTTP ${response.status}`;
+      throw new Error(`OpenAI embeddings API error: ${msg}`);
+    }
 
     for (const d of data.data) {
       const entry = batch[d.index];
