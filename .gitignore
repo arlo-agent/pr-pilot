@@ -3,3 +3,4 @@ dist/
 .next/
 .pr-pilot-cache.json
 .env
+tsconfig.tsbuildinfo
