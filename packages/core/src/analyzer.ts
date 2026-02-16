@@ -5,6 +5,9 @@ import type {
   AnalysisState,
   GitHubItem,
   BatchOptions,
+  DuplicateCluster,
+  PRQualitySignals,
+  VisionAlignment,
 } from './types.js';
 import { DEFAULT_CONFIG, createEmptyState } from './types.js';
 import { fetchOpenPRs, fetchOpenIssues, fetchVisionDocument } from './github.js';
@@ -30,12 +33,14 @@ export function saveState(state: AnalysisState): void {
 
 export function getStateStatus(state: AnalysisState): string {
   const p = state.progress;
+  const total = p.totalPRs + p.totalIssues;
   const lines = [
     `Repository: ${state.repo}`,
     `Last run: ${state.lastRunAt}`,
     `PRs: ${p.fetchedPRs} fetched, Issues: ${p.fetchedIssues} fetched`,
-    `Embedded: ${p.embeddedCount} of ${p.totalPRs + p.totalIssues} items`,
-    `Vision checked: ${p.visionCheckedCount} of ${p.totalPRs + p.totalIssues} items`,
+    `Embedded: ${p.embeddedCount} of ${total} items`,
+    `Vision checked: ${p.visionCheckedCount} of ${total} items`,
+    `Waves completed: ${p.wavesCompleted ?? 0}`,
     `Completed: ${p.completed ? 'yes' : 'no'}`,
   ];
   return lines.join('\n');
@@ -81,6 +86,30 @@ export interface AnalyzeOptions {
   pauseBetweenPhases?: boolean;
   onPause?: (phase: string, done: number, total: number) => Promise<void>;
   onProgress?: (done: number, total: number, phase: string) => void;
+  /** Called after each wave with intermediate results — viewer can display them */
+  onWaveComplete?: (result: AnalysisResult, wave: number, totalWaves: number) => Promise<void>;
+}
+
+/**
+ * Build an AnalysisResult from the current state (works with partial data).
+ */
+function buildResult(
+  state: AnalysisState,
+  clusters: DuplicateCluster[],
+  rankings: PRQualitySignals[],
+  visionAlignments: VisionAlignment[],
+  summary: string,
+): AnalysisResult {
+  return {
+    repo: state.repo,
+    analyzedAt: new Date().toISOString(),
+    totalPRs: state.prs.length,
+    totalIssues: state.issues.length,
+    duplicateClusters: clusters,
+    prRankings: rankings,
+    visionAlignments,
+    summary,
+  };
 }
 
 export async function analyze(
@@ -89,7 +118,14 @@ export async function analyze(
 ): Promise<AnalysisResult> {
   const cfg = { ...DEFAULT_CONFIG, ...config } as PilotConfig;
   const [owner, repo] = cfg.repo.split('/');
-  const { fresh = false, batchSize = 50, pauseBetweenPhases = false, onPause, onProgress } = options ?? {};
+  const {
+    fresh = false,
+    batchSize = 50,
+    pauseBetweenPhases = false,
+    onPause,
+    onProgress,
+    onWaveComplete,
+  } = options ?? {};
 
   // Load or create state
   let state: AnalysisState;
@@ -101,12 +137,7 @@ export async function analyze(
   }
   state.lastRunAt = new Date().toISOString();
 
-  const batchOpts: Partial<BatchOptions> = {
-    batchSize,
-    onProgress,
-  };
-
-  // 1. Fetch PRs and Issues (if not already fetched)
+  // 1. Fetch all PRs and Issues (we need the full list to know what to process)
   if (state.prs.length === 0) {
     onProgress?.(0, 0, 'fetching PRs');
     state.prs = await fetchOpenPRs(owner, repo, cfg.githubToken, cfg.maxItems);
@@ -123,13 +154,9 @@ export async function analyze(
     saveState(state);
   }
 
-  // Pause after fetching
-  if (pauseBetweenPhases && onPause) {
-    const total = state.prs.length + state.issues.length;
-    await onPause('fetching', total, total);
-  }
+  onProgress?.(state.prs.length + state.issues.length, state.prs.length + state.issues.length, 'fetched');
 
-  // Update item list
+  // Build full item list
   const allItemInputs = [
     ...state.prs.map((pr) => ({ number: pr.number, type: 'pr' as const, title: pr.title, body: pr.body })),
     ...state.issues.map((i) => ({ number: i.number, type: 'issue' as const, title: i.title, body: i.body })),
@@ -147,95 +174,151 @@ export async function analyze(
   });
   saveState(state);
 
-  // 2. Generate embeddings (resumable — cache handles already-embedded items)
-  const totalItems = allItemInputs.length;
-  onProgress?.(state.progress.embeddedCount, totalItems, 'embeddings');
-
-  const embedded = await generateEmbeddings(allItemInputs, cfg.openaiApiKey, cfg.embeddingModel, {
-    ...batchOpts,
-    onProgress: (done, total, phase) => {
-      state.progress.embeddedCount = done;
-      // Mark items as embedded
-      for (const e of embedded ?? []) {
-        const item = state.items.find((s) => s.number === e.number && s.type === e.type);
-        if (item) item.embedded = true;
-      }
-      saveState(state);
-      onProgress?.(done, total, phase);
-    },
-  });
-  state.embeddedItems = embedded;
-  state.progress.embeddedCount = embedded.length;
-  for (const item of state.items) {
-    item.embedded = true;
-  }
-  saveState(state);
-
-  // Pause after embeddings
-  if (pauseBetweenPhases && onPause) {
-    await onPause('embeddings', state.progress.embeddedCount, totalItems);
-  }
-
-  // 3. Find similar pairs and cluster
-  const pairs = findSimilarPairs(embedded, cfg.duplicateThreshold);
-  const clusters = clusterDuplicates(pairs, embedded);
-
-  // 4. Rank PRs
-  for (const cluster of clusters) {
-    const rankings = rankPRs(state.prs, cluster);
-    if (rankings.length > 0) {
-      cluster.bestItem = rankings[0].number;
-    }
-  }
-  const allRankings = clusters.flatMap((c) => rankPRs(state.prs, c));
-
-  // 5. Vision alignment (skip items already checked if resuming)
-  let visionAlignments = state.visionAlignments;
+  // Fetch vision doc once (needed for each wave)
   const visionDoc = await fetchVisionDocument(owner, repo, cfg.githubToken, cfg.visionFile ?? undefined);
-  if (visionDoc) {
-    const checkedNumbers = new Set(visionAlignments.map((v) => v.number));
-    const githubItems: GitHubItem[] = [...state.prs, ...state.issues];
-    const unchecked = githubItems.filter((item) => !checkedNumbers.has(item.number));
 
-    if (unchecked.length > 0) {
-      onProgress?.(visionAlignments.length, githubItems.length, 'vision');
-      const newAlignments = await checkVisionAlignment(unchecked, visionDoc, cfg.openaiApiKey, cfg.analysisModel, {
-        ...batchOpts,
-        batchSize: Math.min(batchSize, 10),
-        onProgress: (done, total, phase) => {
-          state.progress.visionCheckedCount = visionAlignments.length + done;
-          saveState(state);
-          onProgress?.(visionAlignments.length + done, githubItems.length, phase);
-        },
-      });
-      visionAlignments = [...visionAlignments, ...newAlignments];
+  // Determine what's already processed
+  const processedNumbers = new Set(
+    state.items.filter((i) => i.embedded && i.visionChecked).map((i) => `${i.type}-${i.number}`)
+  );
+
+  // Split remaining items into waves
+  const unprocessed = allItemInputs.filter((item) => !processedNumbers.has(`${item.type}-${item.number}`));
+  const totalWaves = Math.ceil(unprocessed.length / batchSize);
+  const wavesAlreadyDone = state.progress.wavesCompleted ?? 0;
+
+  // Accumulated results across all waves
+  let allEmbedded = state.embeddedItems ?? [];
+  let allVisionAlignments = state.visionAlignments ?? [];
+  let allClusters: DuplicateCluster[] = [];
+  let allRankings: PRQualitySignals[] = [];
+
+  // If resuming and we have existing embeddings, rebuild clusters/rankings from them
+  if (allEmbedded.length > 0) {
+    const pairs = findSimilarPairs(allEmbedded, cfg.duplicateThreshold);
+    allClusters = clusterDuplicates(pairs, allEmbedded);
+    for (const cluster of allClusters) {
+      const rankings = rankPRs(state.prs, cluster);
+      if (rankings.length > 0) cluster.bestItem = rankings[0].number;
+    }
+    allRankings = allClusters.flatMap((c) => rankPRs(state.prs, c));
+  }
+
+  if (unprocessed.length === 0 && allEmbedded.length > 0) {
+    // Everything already processed — just rebuild and return
+    onProgress?.(allItemInputs.length, allItemInputs.length, 'complete');
+    const summary = await generateSummary(
+      buildResult(state, allClusters, allRankings, allVisionAlignments, ''),
+      cfg.openaiApiKey, cfg.analysisModel,
+    );
+    state.progress.completed = true;
+    saveState(state);
+    return buildResult(state, allClusters, allRankings, allVisionAlignments, summary);
+  }
+
+  // Process in waves
+  for (let w = 0; w < totalWaves; w++) {
+    const waveNum = wavesAlreadyDone + w + 1;
+    const waveStart = w * batchSize;
+    const waveItems = unprocessed.slice(waveStart, waveStart + batchSize);
+    const totalProcessed = (wavesAlreadyDone + w) * batchSize + allEmbedded.length;
+
+    onProgress?.(totalProcessed, allItemInputs.length, `wave ${waveNum} — embedding`);
+
+    // a) Embed this wave
+    const waveEmbedded = await generateEmbeddings(waveItems, cfg.openaiApiKey, cfg.embeddingModel, {
+      batchSize,  // send the whole wave as one embedding batch
+      delayMs: 1500,
+      maxRetries: 5,
+      onProgress: (done, total, phase) => {
+        onProgress?.(allEmbedded.length + done, allItemInputs.length, `wave ${waveNum} — ${phase}`);
+      },
+    });
+
+    // Merge into accumulated embeddings
+    allEmbedded = [...allEmbedded, ...waveEmbedded.filter((e) => e.embedding.length > 0)];
+
+    // Mark embedded in state
+    for (const e of waveEmbedded) {
+      const item = state.items.find((s) => s.number === e.number && s.type === e.type);
+      if (item) item.embedded = true;
+    }
+    state.embeddedItems = allEmbedded;
+    state.progress.embeddedCount = allEmbedded.length;
+    saveState(state);
+
+    // b) Similarity + clustering on everything we have so far
+    onProgress?.(allEmbedded.length, allItemInputs.length, `wave ${waveNum} — clustering`);
+    const pairs = findSimilarPairs(allEmbedded, cfg.duplicateThreshold);
+    allClusters = clusterDuplicates(pairs, allEmbedded);
+
+    // c) Rank PRs in clusters
+    for (const cluster of allClusters) {
+      const rankings = rankPRs(state.prs, cluster);
+      if (rankings.length > 0) cluster.bestItem = rankings[0].number;
+    }
+    allRankings = allClusters.flatMap((c) => rankPRs(state.prs, c));
+
+    // d) Vision alignment for this wave's items
+    if (visionDoc) {
+      onProgress?.(allVisionAlignments.length, allItemInputs.length, `wave ${waveNum} — vision`);
+      const githubItems: GitHubItem[] = [
+        ...state.prs.filter((pr) => waveItems.some((wi) => wi.number === pr.number && wi.type === 'pr')),
+        ...state.issues.filter((iss) => waveItems.some((wi) => wi.number === iss.number && wi.type === 'issue')),
+      ];
+
+      if (githubItems.length > 0) {
+        const newAlignments = await checkVisionAlignment(
+          githubItems, visionDoc, cfg.openaiApiKey, cfg.analysisModel,
+          {
+            batchSize: Math.min(batchSize, 10),
+            delayMs: 1500,
+            maxRetries: 5,
+            onProgress: (done, total, phase) => {
+              onProgress?.(allVisionAlignments.length + done, allItemInputs.length, `wave ${waveNum} — ${phase}`);
+            },
+          },
+        );
+        allVisionAlignments = [...allVisionAlignments, ...newAlignments];
+      }
+    }
+
+    // Update state
+    state.visionAlignments = allVisionAlignments;
+    state.progress.visionCheckedCount = allVisionAlignments.length;
+    state.progress.wavesCompleted = wavesAlreadyDone + w + 1;
+    for (const va of allVisionAlignments) {
+      const item = state.items.find((s) => s.number === va.number && s.type === va.type);
+      if (item) item.visionChecked = true;
+    }
+    saveState(state);
+
+    // Build intermediate result
+    const intermediateResult = buildResult(state, allClusters, allRankings, allVisionAlignments,
+      `Partial analysis: ${allEmbedded.length} of ${allItemInputs.length} items processed (wave ${waveNum}/${wavesAlreadyDone + totalWaves}).`);
+
+    // Notify wave complete
+    if (onWaveComplete) {
+      await onWaveComplete(intermediateResult, waveNum, wavesAlreadyDone + totalWaves);
+    }
+
+    // Pause between waves
+    if (pauseBetweenPhases && onPause && w < totalWaves - 1) {
+      await onPause(`wave ${waveNum} complete`, allEmbedded.length, allItemInputs.length);
     }
   }
-  state.visionAlignments = visionAlignments;
-  state.progress.visionCheckedCount = visionAlignments.length;
-  for (const va of visionAlignments) {
-    const item = state.items.find((s) => s.number === va.number && s.type === va.type);
-    if (item) item.visionChecked = true;
-  }
 
-  // 6. Build result
-  const partialResult = {
-    repo: cfg.repo,
-    analyzedAt: new Date().toISOString(),
-    totalPRs: state.prs.length,
-    totalIssues: state.issues.length,
-    duplicateClusters: clusters,
-    prRankings: allRankings,
-    visionAlignments,
-  };
-
-  // 7. Generate summary
-  const summary = await generateSummary(partialResult, cfg.openaiApiKey, cfg.analysisModel);
+  // Final summary
+  onProgress?.(allItemInputs.length, allItemInputs.length, 'generating summary');
+  const summary = await generateSummary(
+    buildResult(state, allClusters, allRankings, allVisionAlignments, ''),
+    cfg.openaiApiKey, cfg.analysisModel,
+  );
 
   state.progress.completed = true;
   saveState(state);
 
-  onProgress?.(totalItems, totalItems, 'complete');
+  onProgress?.(allItemInputs.length, allItemInputs.length, 'complete');
 
-  return { ...partialResult, summary };
+  return buildResult(state, allClusters, allRankings, allVisionAlignments, summary);
 }

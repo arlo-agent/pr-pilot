@@ -107,10 +107,24 @@ program
       fresh: !!fresh,
       batchSize,
       pauseBetweenPhases: shouldPause,
+      onWaveComplete: async (waveResult, wave, totalWaves) => {
+        console.log(`\n\n  ✅ Wave ${wave}/${totalWaves} complete!`);
+        console.log(`     Items processed: ${waveResult.prRankings.length > 0 ? waveResult.prRankings.length + ' ranked PRs' : 'no ranked PRs yet'}`);
+        console.log(`     Duplicate clusters: ${waveResult.duplicateClusters.length}`);
+        console.log(`     Vision alignments: ${waveResult.visionAlignments.length}`);
+        if (waveResult.duplicateClusters.length > 0) {
+          console.log(`     Top clusters:`);
+          for (const c of waveResult.duplicateClusters.slice(0, 3)) {
+            console.log(`       • ${c.items.length} items (similarity: ${c.averageSimilarity.toFixed(2)}) — ${c.items.map(i => `#${i.number}`).join(', ')}`);
+          }
+        }
+        console.log(`     State saved to .pr-pilot-state.json`);
+      },
       onPause: async (phase, done, total) => {
-        console.log(`\n\n📊 Progress: ${done} of ${total} items (${phase})`);
-        console.log('   State saved to .pr-pilot-state.json\n');
-        const answer = await ask('   [c]ontinue / [s]tatus / [q]uit? ');
+        const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+        console.log(`\n\n📊 Progress: ${done}/${total} items (${pct}%) — ${phase}`);
+        console.log('   You can view partial results with: pr-pilot status\n');
+        const answer = await ask('   [c]ontinue / [v]iew TUI / [j]son / [s]tatus / [q]uit? ');
         if (answer === 'q' || answer === 'quit') {
           console.log('\n👋 Stopped. Run again to resume from saved state.');
           process.exit(0);
@@ -119,6 +133,22 @@ program
           const state = loadState();
           if (state) console.log('\n' + getStateStatus(state) + '\n');
           const answer2 = await ask('   [c]ontinue / [q]uit? ');
+          if (answer2 === 'q' || answer2 === 'quit') {
+            console.log('\n👋 Stopped. Run again to resume from saved state.');
+            process.exit(0);
+          }
+        }
+        if (answer === 'j' || answer === 'json') {
+          const state = loadState();
+          if (state) {
+            console.log(JSON.stringify({
+              repo: state.repo,
+              progress: state.progress,
+              embeddedCount: state.embeddedItems?.length ?? 0,
+              visionCount: state.visionAlignments?.length ?? 0,
+            }, null, 2));
+          }
+          const answer2 = await ask('\n   [c]ontinue / [q]uit? ');
           if (answer2 === 'q' || answer2 === 'quit') {
             console.log('\n👋 Stopped. Run again to resume from saved state.');
             process.exit(0);

@@ -165,6 +165,7 @@ export interface AnalysisState {
     fetchedIssues: number;
     embeddedCount: number;
     visionCheckedCount: number;
+    wavesCompleted: number;
     completed: boolean;
   };
 }
@@ -185,6 +186,7 @@ export function createEmptyState(repo: string): AnalysisState {
       fetchedIssues: 0,
       embeddedCount: 0,
       visionCheckedCount: 0,
+      wavesCompleted: 0,
       completed: false,
     },
   };
