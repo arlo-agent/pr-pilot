@@ -4,9 +4,6 @@ import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAnalysis } from '@/lib/context';
 import { AnalysisResult } from '@/lib/types';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 
 export default function Home() {
   const [json, setJson] = useState('');
@@ -46,39 +43,49 @@ export default function Home() {
 
   return (
     <div className="min-h-screen flex items-center justify-center p-8">
-      <Card className="max-w-2xl w-full">
-        <CardContent className="p-8 space-y-6">
-          <div>
-            <h1 className="text-3xl font-black tracking-tight">PR PILOT</h1>
-            <p className="text-sm text-muted-foreground mt-1">Load analysis data to explore the dashboard.</p>
-          </div>
+      <div style={{ maxWidth: 640, width: '100%', background: '#18181b', border: '1px solid #27272a', padding: 32 }}>
+        <div style={{ marginBottom: 24 }}>
+          <h1 style={{ fontSize: 28, fontWeight: 900, letterSpacing: '-0.025em', color: '#fafafa', margin: 0 }}>PR PILOT</h1>
+          <p style={{ fontSize: 13, color: '#a1a1aa', marginTop: 4 }}>Load analysis data to explore the dashboard.</p>
+        </div>
 
-          <Button
-            onClick={handleLoadFromServer}
-            disabled={loading}
-            className="w-full h-12 text-sm font-semibold"
-          >
-            {loading ? 'Loading…' : 'Load from Server (.pr-pilot-state.json)'}
-          </Button>
+        <button
+          onClick={handleLoadFromServer}
+          disabled={loading}
+          style={{
+            width: '100%', height: 48, background: '#3b82f6', color: '#fff', border: 'none',
+            fontSize: 14, fontWeight: 600, cursor: loading ? 'wait' : 'pointer', marginBottom: 20,
+          }}
+        >
+          {loading ? 'Loading…' : 'Load from Server (.pr-pilot-state.json)'}
+        </button>
 
-          <div className="flex items-center gap-4 text-muted-foreground text-xs">
-            <Separator className="flex-1" />
-            or paste JSON
-            <Separator className="flex-1" />
-          </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, color: '#a1a1aa', fontSize: 12, marginBottom: 20 }}>
+          <div style={{ flex: 1, height: 1, background: '#27272a' }} />
+          or paste JSON
+          <div style={{ flex: 1, height: 1, background: '#27272a' }} />
+        </div>
 
-          <textarea
-            className="w-full h-48 bg-secondary border px-4 py-3 font-mono text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring placeholder:text-muted-foreground resize-none"
-            placeholder='Paste JSON from `pr-pilot scan --json`...'
-            value={json}
-            onChange={e => { setJson(e.target.value); setError(''); }}
-          />
-          {error && <p className="text-destructive text-xs">{error}</p>}
-          <Button variant="secondary" onClick={handlePaste} className="w-full">
-            Load from JSON
-          </Button>
-        </CardContent>
-      </Card>
+        <textarea
+          style={{
+            width: '100%', height: 192, background: '#09090b', border: '1px solid #27272a',
+            padding: 12, fontFamily: 'monospace', fontSize: 12, color: '#fafafa', resize: 'none', outline: 'none',
+          }}
+          placeholder='Paste JSON from `pr-pilot scan --json`...'
+          value={json}
+          onChange={e => { setJson(e.target.value); setError(''); }}
+        />
+        {error && <p style={{ color: '#ef4444', fontSize: 12, marginTop: 8 }}>{error}</p>}
+        <button
+          onClick={handlePaste}
+          style={{
+            width: '100%', height: 40, background: '#27272a', color: '#fafafa', border: '1px solid #3f3f46',
+            fontSize: 13, fontWeight: 500, cursor: 'pointer', marginTop: 12,
+          }}
+        >
+          Load from JSON
+        </button>
+      </div>
     </div>
   );
 }

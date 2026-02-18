@@ -1,7 +1,6 @@
 'use client';
 
 import { useAnalysis } from '@/lib/context';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import Markdown from 'react-markdown';
 
 export default function SummaryPage() {
@@ -9,18 +8,16 @@ export default function SummaryPage() {
   if (!data) return null;
 
   return (
-    <div className="max-w-4xl space-y-4">
-      <h1 className="text-2xl font-bold">Analysis Summary</h1>
-      <Card>
-        <CardHeader>
-          <CardTitle className="text-sm text-muted-foreground">
-            {data.repo} · {new Date(data.analyzedAt).toLocaleString()}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="prose prose-invert prose-sm max-w-none [&_a]:text-blue-400 [&_h1]:text-foreground [&_h2]:text-foreground [&_h3]:text-foreground [&_strong]:text-foreground [&_p]:text-muted-foreground [&_li]:text-muted-foreground [&_code]:text-foreground [&_code]:bg-secondary [&_code]:px-1">
+    <div style={{ maxWidth: 800 }}>
+      <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>Analysis Summary</h1>
+      <div style={{ background: '#18181b', border: '1px solid #27272a', padding: 24 }}>
+        <div style={{ fontSize: 12, color: '#71717a', marginBottom: 16 }}>
+          {data.repo} · {new Date(data.analyzedAt).toLocaleString()}
+        </div>
+        <div style={{ fontSize: 14, lineHeight: 1.7, color: '#a1a1aa' }} className="prose prose-invert prose-sm max-w-none [&_a]:text-blue-400 [&_h1]:text-white [&_h2]:text-white [&_h3]:text-white [&_strong]:text-white [&_code]:bg-zinc-800 [&_code]:px-1">
           <Markdown>{data.summary}</Markdown>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }

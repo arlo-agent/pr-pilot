@@ -2,162 +2,110 @@
 
 import { useState } from 'react';
 import { useAnalysis } from '@/lib/context';
-import { DuplicateCluster, PRQualitySignals } from '@/lib/types';
-import { Badge } from '@/components/ui/badge';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { Separator } from '@/components/ui/separator';
-import { ArrowLeft } from 'lucide-react';
 
-function ScoreBadge({ score, label }: { score: number; label?: string }) {
-  const variant = score >= 0.7 ? 'success' : score >= 0.3 ? 'warning' : 'destructive';
-  return (
-    <Badge variant={variant} className="font-mono text-[10px]">
-      {label && <span className="opacity-70 mr-0.5">{label}</span>}
-      {(score * 100).toFixed(0)}
-    </Badge>
-  );
-}
-
-function ClusterDetail({ cluster, rankings, repo, onBack }: {
-  cluster: DuplicateCluster;
-  rankings: PRQualitySignals[];
-  repo: string;
-  onBack: () => void;
-}) {
-  const rankMap = new Map(rankings.map(r => [r.number, r]));
-  const ghUrl = (num: number, type: 'pr' | 'issue') =>
-    `https://github.com/${repo}/${type === 'pr' ? 'pull' : 'issues'}/${num}`;
-
-  const signals: { key: keyof PRQualitySignals; label: string }[] = [
-    { key: 'codeQuality', label: 'Code' },
-    { key: 'descriptionQuality', label: 'Desc' },
-    { key: 'authorReputation', label: 'Auth' },
-    { key: 'reviewStatus', label: 'Rev' },
-    { key: 'testCoverage', label: 'Test' },
-    { key: 'recency', label: 'Rec' },
-    { key: 'activity', label: 'Act' },
-    { key: 'overallScore', label: 'OVR' },
-  ];
-
-  return (
-    <div className="max-w-4xl space-y-4">
-      <Button variant="ghost" size="sm" onClick={onBack} className="gap-2 text-muted-foreground">
-        <ArrowLeft className="h-4 w-4" /> Back to clusters
-      </Button>
-      <div className="flex items-center gap-3">
-        <h2 className="text-xl font-bold">Cluster Detail</h2>
-        <Badge variant="outline" className="font-mono">{cluster.items.length} items</Badge>
-        <ScoreBadge score={cluster.averageSimilarity} label="sim" />
-      </div>
-
-      <Card className="border-yellow-900/50">
-        <CardContent className="p-4 text-sm text-yellow-400">
-          💡 Suggestion: Keep <span className="font-mono text-green-400">#{cluster.bestItem}</span> and close the others as duplicates.
-        </CardContent>
-      </Card>
-
-      <div className="space-y-3">
-        {cluster.items.map(item => {
-          const isBest = item.number === cluster.bestItem;
-          const rank = rankMap.get(item.number);
-          return (
-            <Card key={item.number} className={isBest ? 'border-green-800' : ''}>
-              <CardContent className="p-4">
-                <div className="flex items-center gap-3 mb-2 flex-wrap">
-                  {isBest && <Badge variant="success" className="text-[10px]">⭐ KEEP</Badge>}
-                  {!isBest && <Badge variant="destructive" className="text-[10px]">CLOSE</Badge>}
-                  <a href={ghUrl(item.number, item.type)} target="_blank" rel="noopener" className="font-mono text-blue-400 hover:underline text-sm">#{item.number}</a>
-                  <Badge variant="outline" className="text-[10px] uppercase">{item.type}</Badge>
-                  <span className="text-sm font-medium">{item.title}</span>
-                </div>
-                <div className="text-xs text-muted-foreground mb-2">
-                  Similarity: {(item.similarity * 100).toFixed(0)}%
-                </div>
-                {rank && (
-                  <div className="flex flex-wrap gap-1.5 mt-2">
-                    {signals.map(s => (
-                      <ScoreBadge key={s.key} score={rank[s.key] as number} label={s.label} />
-                    ))}
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+const cardStyle = { background: '#18181b', border: '1px solid #27272a', padding: 16 };
 
 export default function DuplicatesPage() {
   const { data } = useAnalysis();
-  const [selectedCluster, setSelectedCluster] = useState<number | null>(null);
+  const [selected, setSelected] = useState<number | null>(null);
 
   if (!data) return null;
-  const duplicateClusters = data.duplicateClusters ?? [];
-  const prRankings = data.prRankings ?? [];
+  const dc = data.duplicateClusters ?? [];
+  const pr = data.prRankings ?? [];
+  const rankMap = new Map(pr.map(r => [r.number, r]));
+  const ghUrl = (num: number, type: string) => `https://github.com/${data.repo}/${type === 'pr' ? 'pull' : 'issues'}/${num}`;
+  const scoreColor = (s: number) => s >= 0.7 ? '#22c55e' : s >= 0.3 ? '#eab308' : '#ef4444';
 
-  if (selectedCluster !== null && duplicateClusters[selectedCluster]) {
+  if (dc.length === 0) {
     return (
-      <ClusterDetail
-        cluster={duplicateClusters[selectedCluster]}
-        rankings={prRankings}
-        repo={data.repo}
-        onBack={() => setSelectedCluster(null)}
-      />
+      <div style={{ maxWidth: 1200 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 16 }}>Duplicate Clusters</h1>
+        <div style={{ ...cardStyle, textAlign: 'center', padding: 32 }}>
+          <p style={{ color: '#22c55e', fontSize: 18, fontWeight: 600 }}>✓ No duplicates detected</p>
+          <p style={{ color: '#a1a1aa', fontSize: 13, marginTop: 4 }}>All PRs and issues are unique.</p>
+        </div>
+      </div>
     );
   }
 
-  return (
-    <div className="max-w-7xl space-y-4">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Duplicate Clusters</h1>
-        <span className="text-sm text-muted-foreground">{duplicateClusters.length} clusters</span>
-      </div>
+  // Detail view
+  if (selected !== null && dc[selected]) {
+    const c = dc[selected];
+    const best = c.items.find(it => it.number === c.bestItem);
+    const signals = ['codeQuality', 'descriptionQuality', 'authorReputation', 'reviewStatus', 'testCoverage', 'recency', 'activity', 'overallScore'] as const;
 
-      {duplicateClusters.length === 0 && (
-        <Card>
-          <CardContent className="p-8 text-center">
-            <p className="text-green-400 text-lg font-semibold">✓ No duplicates detected</p>
-            <p className="text-muted-foreground text-sm mt-1">All PRs and issues are unique.</p>
-          </CardContent>
-        </Card>
-      )}
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {duplicateClusters.map((c, i) => {
-          const best = c.items.find(it => it.number === c.bestItem);
-          return (
-            <Card
-              key={c.id}
-              className="cursor-pointer hover:border-muted-foreground/30 transition-colors"
-              onClick={() => setSelectedCluster(i)}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                  <Badge variant="outline" className="font-mono text-[10px]">{c.items.length} items</Badge>
-                  <ScoreBadge score={c.averageSimilarity} label="sim" />
+    return (
+      <div style={{ maxWidth: 800 }}>
+        <button onClick={() => setSelected(null)} style={{ background: 'none', border: 'none', color: '#a1a1aa', cursor: 'pointer', fontSize: 13, marginBottom: 16 }}>← Back to clusters</button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
+          <h2 style={{ fontSize: 20, fontWeight: 700 }}>Cluster Detail</h2>
+          <span style={{ fontSize: 11, color: '#a1a1aa', background: '#27272a', padding: '2px 8px', fontFamily: 'monospace' }}>{c.items.length} items</span>
+          <span style={{ fontSize: 11, color: '#eab308', background: '#27272a', padding: '2px 8px', fontFamily: 'monospace' }}>sim {(c.averageSimilarity * 100).toFixed(0)}%</span>
+        </div>
+        <div style={{ ...cardStyle, borderColor: '#78350f', background: 'rgba(120,53,15,0.15)', marginBottom: 16, fontSize: 13, color: '#eab308' }}>
+          💡 Keep <span style={{ fontFamily: 'monospace', color: '#22c55e' }}>#{c.bestItem}</span> and close the others as duplicates.
+        </div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {c.items.map(item => {
+            const isBest = item.number === c.bestItem;
+            const rank = rankMap.get(item.number);
+            return (
+              <div key={item.number} style={{ ...cardStyle, borderColor: isBest ? '#166534' : '#27272a' }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap', marginBottom: 8 }}>
+                  <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 6px', color: '#fff', background: isBest ? '#166534' : '#991b1b' }}>{isBest ? '⭐ KEEP' : 'CLOSE'}</span>
+                  <a href={ghUrl(item.number, item.type)} target="_blank" rel="noopener" style={{ fontFamily: 'monospace', color: '#3b82f6', fontSize: 13 }}>#{item.number}</a>
+                  <span style={{ fontSize: 10, color: '#a1a1aa', background: '#27272a', padding: '2px 6px', textTransform: 'uppercase' }}>{item.type}</span>
+                  <span style={{ fontSize: 13, fontWeight: 500 }}>{item.title}</span>
                 </div>
-                {best && (
-                  <div className="text-sm mb-2">
-                    <span className="font-mono text-green-400">#{best.number}</span>{' '}
-                    <span className="text-muted-foreground">{best.title.slice(0, 60)}</span>
+                <div style={{ fontSize: 12, color: '#a1a1aa', marginBottom: 8 }}>Similarity: {(item.similarity * 100).toFixed(0)}%</div>
+                {rank && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                    {signals.map(s => (
+                      <span key={s} style={{ fontSize: 10, fontFamily: 'monospace', color: scoreColor(rank[s] as number), background: '#27272a', padding: '2px 6px' }}>
+                        {s.slice(0, 4).toUpperCase()} {((rank[s] as number) * 100).toFixed(0)}
+                      </span>
+                    ))}
                   </div>
                 )}
-                <Separator className="my-2" />
-                <ul className="space-y-1">
-                  {c.items.filter(it => it.number !== c.bestItem).slice(0, 3).map(item => (
-                    <li key={item.number} className="text-xs text-muted-foreground">
-                      <span className="font-mono text-red-400">#{item.number}</span> {item.title.slice(0, 50)}
-                    </li>
-                  ))}
-                </ul>
-                {c.items.length > 4 && (
-                  <div className="text-[10px] text-muted-foreground mt-2">+{c.items.length - 4} more</div>
-                )}
-              </CardContent>
-            </Card>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  // List view
+  return (
+    <div style={{ maxWidth: 1200 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+        <h1 style={{ fontSize: 24, fontWeight: 700 }}>Duplicate Clusters</h1>
+        <span style={{ fontSize: 13, color: '#a1a1aa' }}>{dc.length} clusters</span>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }} className="max-lg:!grid-cols-2 max-sm:!grid-cols-1">
+        {dc.map((c, i) => {
+          const best = c.items.find(it => it.number === c.bestItem);
+          const dupes = c.items.filter(it => it.number !== c.bestItem);
+          return (
+            <div key={i} onClick={() => setSelected(i)} style={{ ...cardStyle, cursor: 'pointer' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
+                <span style={{ fontSize: 11, color: '#a1a1aa', background: '#27272a', padding: '2px 8px', fontFamily: 'monospace' }}>{c.items.length} items</span>
+                <span style={{ fontSize: 11, color: '#eab308', background: '#27272a', padding: '2px 8px', fontFamily: 'monospace' }}>sim {(c.averageSimilarity * 100).toFixed(0)}%</span>
+              </div>
+              {best && (
+                <div style={{ fontSize: 13, marginBottom: 8 }}>
+                  <span style={{ fontFamily: 'monospace', color: '#22c55e' }}>#{best.number}</span>{' '}
+                  <span style={{ color: '#a1a1aa' }}>{best.title.slice(0, 60)}</span>
+                </div>
+              )}
+              <div style={{ height: 1, background: '#27272a', margin: '8px 0' }} />
+              {dupes.slice(0, 3).map(d => (
+                <div key={d.number} style={{ fontSize: 12, color: '#a1a1aa', marginBottom: 4 }}>
+                  <span style={{ fontFamily: 'monospace', color: '#ef4444' }}>#{d.number}</span> {d.title.slice(0, 50)}
+                </div>
+              ))}
+              {dupes.length > 3 && <div style={{ fontSize: 10, color: '#71717a', marginTop: 4 }}>+{dupes.length - 3} more</div>}
+            </div>
           );
         })}
       </div>
