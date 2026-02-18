@@ -6,3 +6,4 @@ export { fetchOpenPRs, fetchOpenIssues, fetchPRFiles, fetchVisionDocument } from
 export { cosineSimilarity, findSimilarPairs, clusterDuplicates } from './similarity.js';
 export { rankPRs } from './ranker.js';
 export { checkVisionAlignment } from './vision.js';
+export { generateSummary } from './summarizer.js';

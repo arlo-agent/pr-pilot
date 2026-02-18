@@ -17,7 +17,7 @@ import { render } from 'ink';
 import App from './tui/app.js';
 import { mockData } from './tui/mock-data.js';
 import type { PilotConfig } from '@pr-pilot/core';
-import { DEFAULT_CONFIG, analyze, loadState, getStateStatus } from '@pr-pilot/core';
+import { DEFAULT_CONFIG, analyze, loadState, getStateStatus, generateSummary } from '@pr-pilot/core';
 
 function ask(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -51,6 +51,7 @@ program
   .option('--continue', 'Continue from saved state (default if state exists)')
   .option('--fresh', 'Ignore saved state, start over')
   .option('--no-pause', 'Run all batches without pausing')
+  .option('--no-summary', 'Skip LLM-generated summary')
   .option('--status', 'Print current analysis state without running')
   .action(async (repo: string, opts: Record<string, unknown>) => {
     // --status: just print state and exit
@@ -197,6 +198,22 @@ program
     console.log(`  Duplicate clusters: ${result.duplicateClusters.length}`);
     console.log(`  Vision alignments: ${result.visionAlignments.length}`);
     console.log(`  State saved to .pr-pilot-state.json\n`);
+
+    // Generate LLM summary unless --no-summary
+    if (opts.summary !== false) {
+      try {
+        process.stdout.write('📝 Generating summary...');
+        const summary = await generateSummary(result, config.openaiApiKey, config.analysisModel);
+        result.summary = summary;
+        process.stdout.write('\r');
+        console.log('─'.repeat(60));
+        console.log(summary);
+        console.log('─'.repeat(60));
+        console.log();
+      } catch (err: unknown) {
+        console.warn(`\n⚠️  Summary generation failed: ${(err as Error).message}\n`);
+      }
+    }
 
     if (opts.json) {
       console.log(JSON.stringify(result, null, 2));
