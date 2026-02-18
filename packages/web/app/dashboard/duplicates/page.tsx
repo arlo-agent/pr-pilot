@@ -95,12 +95,14 @@ export default function DuplicatesPage() {
   const [selectedCluster, setSelectedCluster] = useState<number | null>(null);
 
   if (!data) return null;
+  const duplicateClusters = data.duplicateClusters ?? [];
+  const prRankings = data.prRankings ?? [];
 
-  if (selectedCluster !== null && data.duplicateClusters[selectedCluster]) {
+  if (selectedCluster !== null && duplicateClusters[selectedCluster]) {
     return (
       <ClusterDetail
-        cluster={data.duplicateClusters[selectedCluster]}
-        rankings={data.prRankings}
+        cluster={duplicateClusters[selectedCluster]}
+        rankings={prRankings}
         repo={data.repo}
         onBack={() => setSelectedCluster(null)}
       />
@@ -111,10 +113,10 @@ export default function DuplicatesPage() {
     <div className="max-w-7xl space-y-4">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">Duplicate Clusters</h1>
-        <span className="text-sm text-muted-foreground">{data.duplicateClusters.length} clusters</span>
+        <span className="text-sm text-muted-foreground">{duplicateClusters.length} clusters</span>
       </div>
 
-      {data.duplicateClusters.length === 0 && (
+      {duplicateClusters.length === 0 && (
         <Card>
           <CardContent className="p-8 text-center">
             <p className="text-green-400 text-lg font-semibold">✓ No duplicates detected</p>
@@ -124,7 +126,7 @@ export default function DuplicatesPage() {
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {data.duplicateClusters.map((c, i) => {
+        {duplicateClusters.map((c, i) => {
           const best = c.items.find(it => it.number === c.bestItem);
           return (
             <Card

@@ -22,8 +22,9 @@ export default function VisionPage() {
   const [search, setSearch] = useState('');
 
   if (!data) return null;
+  const visionAlignments = data.visionAlignments ?? [];
 
-  if (data.visionAlignments.length === 0) {
+  if (visionAlignments.length === 0) {
     return (
       <div className="max-w-7xl">
         <h1 className="text-2xl font-bold mb-4">Vision Alignment</h1>
@@ -38,13 +39,13 @@ export default function VisionPage() {
   }
 
   const counts = {
-    all: data.visionAlignments.length,
-    aligned: data.visionAlignments.filter(v => v.alignment === 'aligned').length,
-    tangential: data.visionAlignments.filter(v => v.alignment === 'tangential').length,
-    misaligned: data.visionAlignments.filter(v => v.alignment === 'misaligned').length,
+    all: visionAlignments.length,
+    aligned: visionAlignments.filter(v => v.alignment === 'aligned').length,
+    tangential: visionAlignments.filter(v => v.alignment === 'tangential').length,
+    misaligned: visionAlignments.filter(v => v.alignment === 'misaligned').length,
   };
 
-  let items = filter === 'all' ? data.visionAlignments : data.visionAlignments.filter(v => v.alignment === filter);
+  let items = filter === 'all' ? visionAlignments : visionAlignments.filter(v => v.alignment === filter);
   if (search) {
     const q = search.toLowerCase();
     items = items.filter(v => v.title.toLowerCase().includes(q) || v.reasoning.toLowerCase().includes(q) || String(v.number).includes(q));

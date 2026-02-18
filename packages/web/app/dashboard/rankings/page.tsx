@@ -32,8 +32,10 @@ export default function RankingsPage() {
   const [asc, setAsc] = useState(false);
 
   if (!data) return null;
+  const prRankings = data.prRankings ?? [];
+  const visionAlignments = data.visionAlignments ?? [];
 
-  if (data.prRankings.length === 0) {
+  if (prRankings.length === 0) {
     return (
       <div className="max-w-7xl">
         <h1 className="text-2xl font-bold mb-4">PR Rankings</h1>
@@ -44,14 +46,14 @@ export default function RankingsPage() {
     );
   }
 
-  const sorted = [...data.prRankings].sort((a, b) => asc ? a[sortBy] - b[sortBy] : b[sortBy] - a[sortBy]);
+  const sorted = [...prRankings].sort((a, b) => asc ? a[sortBy] - b[sortBy] : b[sortBy] - a[sortBy]);
   const handleSort = (key: SortKey) => {
     if (sortBy === key) setAsc(!asc);
     else { setSortBy(key); setAsc(false); }
   };
 
   const ghUrl = (num: number) => `https://github.com/${data.repo}/pull/${num}`;
-  const titleMap = new Map(data.visionAlignments.map(v => [v.number, v.title]));
+  const titleMap = new Map(visionAlignments.map(v => [v.number, v.title]));
 
   return (
     <div className="max-w-7xl space-y-4">

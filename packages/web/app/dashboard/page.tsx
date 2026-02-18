@@ -24,16 +24,20 @@ export default function DashboardPage() {
   const { data } = useAnalysis();
   if (!data) return null;
 
-  const aligned = data.visionAlignments.filter(v => v.alignment === 'aligned');
-  const tangential = data.visionAlignments.filter(v => v.alignment === 'tangential');
-  const misaligned = data.visionAlignments.filter(v => v.alignment === 'misaligned');
-  const total = data.visionAlignments.length;
+  const visionAlignments = data.visionAlignments ?? [];
+  const duplicateClusters = data.duplicateClusters ?? [];
+  const prRankings = data.prRankings ?? [];
+
+  const aligned = visionAlignments.filter(v => v.alignment === 'aligned');
+  const tangential = visionAlignments.filter(v => v.alignment === 'tangential');
+  const misaligned = visionAlignments.filter(v => v.alignment === 'misaligned');
+  const total = visionAlignments.length;
   const pct = (n: number) => total ? Math.round((n / total) * 100) : 0;
 
-  const totalItems = data.totalPRs + data.totalIssues;
-  const dupItems = data.duplicateClusters.reduce((s, c) => s + c.items.length, 0);
-  const avgScore = data.prRankings.length
-    ? data.prRankings.reduce((s, r) => s + r.overallScore, 0) / data.prRankings.length
+  const totalItems = (data.totalPRs ?? 0) + (data.totalIssues ?? 0);
+  const dupItems = duplicateClusters.reduce((s, c) => s + c.items.length, 0);
+  const avgScore = prRankings.length
+    ? prRankings.reduce((s, r) => s + r.overallScore, 0) / prRankings.length
     : 0;
   const dupPenalty = Math.min(totalItems ? dupItems / totalItems : 0, 0.5);
   const misPenalty = Math.min(total ? misaligned.length / total : 0, 0.5);
@@ -43,12 +47,12 @@ export default function DashboardPage() {
   const alignPct = pct(aligned.length);
   const alignColor = alignPct >= 70 ? 'text-green-500' : alignPct >= 40 ? 'text-yellow-500' : 'text-red-500';
 
-  const top5 = [...data.prRankings].sort((a, b) => b.overallScore - a.overallScore).slice(0, 5);
+  const top5 = [...prRankings].sort((a, b) => b.overallScore - a.overallScore).slice(0, 5);
   const ghUrl = (num: number, type: 'pr' | 'issue' = 'pr') =>
     `https://github.com/${data.repo}/${type === 'pr' ? 'pull' : 'issues'}/${num}`;
 
   // Title map from vision alignments
-  const titleMap = new Map(data.visionAlignments.map(v => [v.number, v.title]));
+  const titleMap = new Map(visionAlignments.map(v => [v.number, v.title]));
 
   return (
     <div className="space-y-6 max-w-7xl">
@@ -56,7 +60,7 @@ export default function DashboardPage() {
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         <HeroStat label="Total PRs" value={data.totalPRs} />
         <HeroStat label="Total Issues" value={data.totalIssues} />
-        <HeroStat label="Dup Clusters" value={data.duplicateClusters.length} />
+        <HeroStat label="Dup Clusters" value={duplicateClusters.length} />
         <HeroStat label="Health Score" value={(health * 100).toFixed(0)} sub="/ 100" color={healthColor} />
         <HeroStat label="Vision Aligned" value={`${alignPct}%`} sub={`${aligned.length} of ${total}`} color={alignColor} />
       </div>
@@ -125,13 +129,13 @@ export default function DashboardPage() {
         )}
 
         {/* Duplicate clusters needing action */}
-        {data.duplicateClusters.length > 0 && (
+        {duplicateClusters.length > 0 && (
           <Card className="border-yellow-900/50">
             <CardHeader className="pb-3">
               <CardTitle className="text-sm text-yellow-400">Duplicate Clusters — Close Candidates</CardTitle>
             </CardHeader>
             <CardContent className="space-y-2">
-              {data.duplicateClusters.slice(0, 5).map(c => {
+              {duplicateClusters.slice(0, 5).map(c => {
                 const best = c.items.find(it => it.number === c.bestItem);
                 const dupes = c.items.filter(it => it.number !== c.bestItem);
                 return (
