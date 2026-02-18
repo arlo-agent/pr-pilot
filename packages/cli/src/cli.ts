@@ -160,6 +160,21 @@ program
             process.exit(0);
           }
         }
+        if (answer === 'v' || answer === 'view') {
+          const state = loadState();
+          if (state) {
+            const partialResult = buildResultFromState(state);
+            if (partialResult) {
+              render(React.createElement(App, { data: partialResult }));
+              await ask('\n   Press Enter to continue scanning or [q]uit: ');
+            }
+          }
+          const answer2 = await ask('   [c]ontinue / [q]uit? ');
+          if (answer2 === 'q' || answer2 === 'quit') {
+            console.log('\n👋 Stopped. Run again to resume from saved state.');
+            process.exit(0);
+          }
+        }
         if (answer === 'j' || answer === 'json') {
           const state = loadState();
           if (state) {
@@ -298,6 +313,23 @@ program
       console.error(`\n❌ Summary generation failed: ${(err as Error).message}`);
       process.exit(1);
     }
+  });
+
+program
+  .command('view')
+  .description('Launch TUI from saved state')
+  .action(() => {
+    const state = loadState();
+    if (!state) {
+      console.log('No saved state found. Run a scan first.');
+      process.exit(1);
+    }
+    const result = buildResultFromState(state);
+    if (!result) {
+      console.log('Failed to build result from state.');
+      process.exit(1);
+    }
+    render(React.createElement(App, { data: result }));
   });
 
 program
