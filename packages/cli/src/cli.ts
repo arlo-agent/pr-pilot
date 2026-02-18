@@ -17,7 +17,26 @@ import { render } from 'ink';
 import App from './tui/app.js';
 import { mockData } from './tui/mock-data.js';
 import type { PilotConfig } from '@pr-pilot/core';
-import { DEFAULT_CONFIG, analyze, loadState, getStateStatus, generateSummary } from '@pr-pilot/core';
+import { DEFAULT_CONFIG, analyze, loadState, getStateStatus, generateSummary, findSimilarPairs, clusterDuplicates, rankPRs } from '@pr-pilot/core';
+
+function buildResultFromState(state: ReturnType<typeof loadState>) {
+  if (!state) return null;
+  const relatedThreshold = DEFAULT_CONFIG.relatedThreshold ?? 0.7;
+  const embedded = state.embeddedItems ?? [];
+  const pairs = findSimilarPairs(embedded, relatedThreshold);
+  const clusters = clusterDuplicates(pairs, embedded);
+  const rankings = clusters.flatMap((c) => rankPRs(state.prs, c));
+  return {
+    repo: state.repo,
+    analyzedAt: state.lastRunAt,
+    totalPRs: state.prs.length,
+    totalIssues: state.issues.length,
+    duplicateClusters: clusters,
+    prRankings: rankings,
+    visionAlignments: state.visionAlignments ?? [],
+    summary: '',
+  };
+}
 
 function ask(question: string): Promise<string> {
   const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -233,6 +252,52 @@ program
       return;
     }
     console.log(getStateStatus(state));
+  });
+
+program
+  .command('summarize')
+  .description('Generate a summary from saved state without re-running analysis')
+  .option('--openai-key <key>', 'OpenAI API key (or OPENAI_API_KEY env)')
+  .option('--json', 'Output full result as JSON (including summary)')
+  .action(async (opts: Record<string, unknown>) => {
+    const state = loadState();
+    if (!state) {
+      console.log('No saved state found. Run a scan first.');
+      process.exit(1);
+    }
+
+    const apiKey = (opts.openaiKey as string) || process.env.OPENAI_API_KEY || '';
+    if (!apiKey) {
+      console.error('Error: OpenAI API key required (--openai-key or OPENAI_API_KEY env)');
+      process.exit(1);
+    }
+
+    const result = buildResultFromState(state);
+    if (!result) {
+      console.log('Failed to build result from state.');
+      process.exit(1);
+    }
+
+    console.log(getStateStatus(state));
+    console.log();
+
+    process.stdout.write('📝 Generating summary...');
+    try {
+      const summary = await generateSummary(result, apiKey, DEFAULT_CONFIG.analysisModel);
+      result.summary = summary;
+      process.stdout.write('\r');
+      console.log('─'.repeat(60));
+      console.log(summary);
+      console.log('─'.repeat(60));
+
+      if (opts.json) {
+        console.log();
+        console.log(JSON.stringify(result, null, 2));
+      }
+    } catch (err: unknown) {
+      console.error(`\n❌ Summary generation failed: ${(err as Error).message}`);
+      process.exit(1);
+    }
   });
 
 program
