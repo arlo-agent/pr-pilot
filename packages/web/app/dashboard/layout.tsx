@@ -1,13 +1,15 @@
 'use client';
 
 import { useAnalysis } from '@/lib/context';
-import { Navbar } from '@/components/Navbar';
+import { Header } from '@/components/Header';
+import { Sidebar } from '@/components/Sidebar';
 import { useRouter } from 'next/navigation';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { data } = useAnalysis();
   const router = useRouter();
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (!data) router.replace('/');
@@ -16,9 +18,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   if (!data) return null;
 
   return (
-    <div>
-      <Navbar />
-      <main className="p-6">{children}</main>
+    <div className="min-h-screen">
+      <Header onMenuToggle={() => setSidebarOpen((o) => !o)} />
+      <Sidebar open={sidebarOpen} onClose={() => setSidebarOpen(false)} />
+      <main className="pt-12 lg:pl-56">
+        <div className="p-6">{children}</div>
+      </main>
     </div>
   );
 }

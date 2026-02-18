@@ -1,8 +1,24 @@
 'use client';
 
 import { useAnalysis } from '@/lib/context';
-import { StatCard } from '@/components/StatCard';
-import { ScoreBadge } from '@/components/ScoreBadge';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Separator } from '@/components/ui/separator';
+import Markdown from 'react-markdown';
+
+function HeroStat({ label, value, sub, color }: { label: string; value: string | number; sub?: string; color?: string }) {
+  return (
+    <Card>
+      <CardContent className="p-5">
+        <div className="text-xs font-medium uppercase tracking-wider text-muted-foreground mb-2">{label}</div>
+        <div className={`text-5xl xl:text-6xl font-black tabular-nums tracking-tight leading-none ${color || 'text-foreground'}`}>
+          {value}
+        </div>
+        {sub && <div className="text-xs text-muted-foreground mt-2">{sub}</div>}
+      </CardContent>
+    </Card>
+  );
+}
 
 export default function DashboardPage() {
   const { data } = useAnalysis();
@@ -12,7 +28,7 @@ export default function DashboardPage() {
   const tangential = data.visionAlignments.filter(v => v.alignment === 'tangential');
   const misaligned = data.visionAlignments.filter(v => v.alignment === 'misaligned');
   const total = data.visionAlignments.length;
-  const pct = (n: number) => total ? `${((n / total) * 100).toFixed(0)}%` : '—';
+  const pct = (n: number) => total ? Math.round((n / total) * 100) : 0;
 
   const totalItems = data.totalPRs + data.totalIssues;
   const dupItems = data.duplicateClusters.reduce((s, c) => s + c.items.length, 0);
@@ -22,90 +38,133 @@ export default function DashboardPage() {
   const dupPenalty = Math.min(totalItems ? dupItems / totalItems : 0, 0.5);
   const misPenalty = Math.min(total ? misaligned.length / total : 0, 0.5);
   const health = Math.max(0, avgScore - dupPenalty * 0.3 - misPenalty * 0.3);
+  const healthColor = health >= 0.7 ? 'text-green-500' : health >= 0.3 ? 'text-yellow-500' : 'text-red-500';
+
+  const alignPct = pct(aligned.length);
+  const alignColor = alignPct >= 70 ? 'text-green-500' : alignPct >= 40 ? 'text-yellow-500' : 'text-red-500';
 
   const top5 = [...data.prRankings].sort((a, b) => b.overallScore - a.overallScore).slice(0, 5);
-
   const ghUrl = (num: number, type: 'pr' | 'issue' = 'pr') =>
     `https://github.com/${data.repo}/${type === 'pr' ? 'pull' : 'issues'}/${num}`;
 
-  return (
-    <div className="space-y-6">
-      <h1 className="text-2xl font-bold">{data.repo}</h1>
+  // Title map from vision alignments
+  const titleMap = new Map(data.visionAlignments.map(v => [v.number, v.title]));
 
-      <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-        <StatCard label="PRs Analyzed" value={data.totalPRs} />
-        <StatCard label="Issues Analyzed" value={data.totalIssues} />
-        <StatCard label="Duplicate Clusters" value={data.duplicateClusters.length} />
-        <StatCard label="Ranked PRs" value={data.prRankings.length} />
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <div className="text-sm text-gray-400">Health Score</div>
-          <div className="text-2xl font-bold mt-1"><ScoreBadge score={health} /></div>
-        </div>
+  return (
+    <div className="space-y-6 max-w-7xl">
+      {/* Hero Stats */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <HeroStat label="Total PRs" value={data.totalPRs} />
+        <HeroStat label="Total Issues" value={data.totalIssues} />
+        <HeroStat label="Dup Clusters" value={data.duplicateClusters.length} />
+        <HeroStat label="Health Score" value={(health * 100).toFixed(0)} sub="/ 100" color={healthColor} />
+        <HeroStat label="Vision Aligned" value={`${alignPct}%`} sub={`${aligned.length} of ${total}`} color={alignColor} />
       </div>
 
-      {/* Alignment Breakdown */}
+      {/* Vision Alignment Bar */}
       {total > 0 && (
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <h2 className="text-sm text-gray-400 mb-3">Vision Alignment</h2>
-          <div className="flex gap-6 flex-wrap">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-green-600" />
-              <span className="text-sm">Aligned: {aligned.length} ({pct(aligned.length)})</span>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-sm font-medium text-muted-foreground">Vision Alignment Distribution</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex h-3 overflow-hidden">
+              {aligned.length > 0 && <div className="bg-green-600 transition-all" style={{ width: `${pct(aligned.length)}%` }} />}
+              {tangential.length > 0 && <div className="bg-yellow-600 transition-all" style={{ width: `${pct(tangential.length)}%` }} />}
+              {misaligned.length > 0 && <div className="bg-red-600 transition-all" style={{ width: `${pct(misaligned.length)}%` }} />}
             </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-yellow-600" />
-              <span className="text-sm">Tangential: {tangential.length} ({pct(tangential.length)})</span>
+            <div className="flex gap-6 mt-3 text-xs">
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-green-600 inline-block" /> Aligned {aligned.length} ({pct(aligned.length)}%)</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-yellow-600 inline-block" /> Tangential {tangential.length} ({pct(tangential.length)}%)</span>
+              <span className="flex items-center gap-1.5"><span className="w-2.5 h-2.5 bg-red-600 inline-block" /> Misaligned {misaligned.length} ({pct(misaligned.length)}%)</span>
             </div>
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full bg-red-600" />
-              <span className="text-sm">Misaligned: {misaligned.length} ({pct(misaligned.length)})</span>
-            </div>
-          </div>
-          {/* Simple bar */}
-          <div className="flex h-2 rounded-full overflow-hidden mt-3">
-            {aligned.length > 0 && <div className="bg-green-600" style={{ width: pct(aligned.length) }} />}
-            {tangential.length > 0 && <div className="bg-yellow-600" style={{ width: pct(tangential.length) }} />}
-            {misaligned.length > 0 && <div className="bg-red-600" style={{ width: pct(misaligned.length) }} />}
-          </div>
-        </div>
+          </CardContent>
+        </Card>
       )}
 
-      {/* Misaligned warnings */}
-      {misaligned.length > 0 && (
-        <div className="bg-red-950 border border-red-800 rounded-lg p-4">
-          <h2 className="text-sm text-red-400 font-semibold mb-2">⚠ Misaligned Items</h2>
-          {misaligned.map(m => (
-            <div key={m.number} className="text-sm text-red-300">
-              <a href={ghUrl(m.number, m.type)} target="_blank" rel="noopener" className="font-mono hover:underline">#{m.number}</a>
-              {' '}{m.title}
-            </div>
-          ))}
-        </div>
-      )}
+      {/* Action Items */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Misaligned warnings */}
+        {misaligned.length > 0 && (
+          <Card className="border-red-900/50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm text-red-400 flex items-center gap-2">
+                ⚠ Misaligned Items — Review Required
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-1.5">
+              {misaligned.map(m => (
+                <div key={m.number} className="text-sm">
+                  <a href={ghUrl(m.number, m.type)} target="_blank" rel="noopener" className="font-mono text-blue-400 hover:underline">#{m.number}</a>
+                  {' '}<span className="text-muted-foreground">{m.title}</span>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
 
-      {/* Top 5 PRs */}
-      {top5.length > 0 && (
-        <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-          <h2 className="text-sm text-gray-400 mb-3">Top Ranked PRs</h2>
-          <div className="space-y-2">
-            {top5.map((pr, i) => (
-              <div key={pr.number} className="flex items-center gap-3 text-sm">
-                <span className="text-gray-500 w-5 text-right">{i + 1}.</span>
-                <a href={ghUrl(pr.number)} target="_blank" rel="noopener" className="font-mono text-blue-400 hover:underline">
-                  #{pr.number}
-                </a>
-                <ScoreBadge score={pr.overallScore} />
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+        {/* Top PRs to review */}
+        {top5.length > 0 && (
+          <Card>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm text-muted-foreground">Top Ranked PRs</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {top5.map((pr, i) => (
+                <div key={pr.number} className="flex items-center gap-3 text-sm">
+                  <span className="text-muted-foreground w-5 text-right tabular-nums">{i + 1}.</span>
+                  <a href={ghUrl(pr.number)} target="_blank" rel="noopener" className="font-mono text-blue-400 hover:underline">#{pr.number}</a>
+                  <span className="text-muted-foreground truncate flex-1">{titleMap.get(pr.number) || ''}</span>
+                  <Badge variant={pr.overallScore >= 0.7 ? 'success' : pr.overallScore >= 0.3 ? 'warning' : 'destructive'} className="font-mono">
+                    {(pr.overallScore * 100).toFixed(0)}
+                  </Badge>
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Duplicate clusters needing action */}
+        {data.duplicateClusters.length > 0 && (
+          <Card className="border-yellow-900/50">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm text-yellow-400">Duplicate Clusters — Close Candidates</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {data.duplicateClusters.slice(0, 5).map(c => {
+                const best = c.items.find(it => it.number === c.bestItem);
+                const dupes = c.items.filter(it => it.number !== c.bestItem);
+                return (
+                  <div key={c.id} className="text-sm">
+                    <span className="text-muted-foreground">Keep </span>
+                    {best && <a href={ghUrl(best.number, best.type)} target="_blank" rel="noopener" className="font-mono text-green-400 hover:underline">#{best.number}</a>}
+                    <span className="text-muted-foreground">, close </span>
+                    {dupes.slice(0, 3).map((d, i) => (
+                      <span key={d.number}>
+                        {i > 0 && ', '}
+                        <a href={ghUrl(d.number, d.type)} target="_blank" rel="noopener" className="font-mono text-red-400 hover:underline">#{d.number}</a>
+                      </span>
+                    ))}
+                    {dupes.length > 3 && <span className="text-muted-foreground"> +{dupes.length - 3} more</span>}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      <Separator />
 
       {/* Summary */}
-      <div className="bg-gray-900 border border-gray-800 rounded-lg p-4">
-        <h2 className="text-sm text-gray-400 mb-2">Summary</h2>
-        <p className="text-sm whitespace-pre-wrap">{data.summary}</p>
-      </div>
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-sm text-muted-foreground">Analysis Summary</CardTitle>
+        </CardHeader>
+        <CardContent className="prose prose-invert prose-sm max-w-none text-sm text-muted-foreground [&_a]:text-blue-400 [&_h1]:text-foreground [&_h2]:text-foreground [&_h3]:text-foreground [&_strong]:text-foreground">
+          <Markdown>{data.summary}</Markdown>
+        </CardContent>
+      </Card>
     </div>
   );
 }
