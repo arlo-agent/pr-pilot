@@ -317,8 +317,10 @@ program
 
 program
   .command('view')
-  .description('Launch TUI from saved state')
-  .action(() => {
+  .description('Launch TUI from saved state (auto-generates summary if missing)')
+  .option('--openai-key <key>', 'OpenAI API key (or OPENAI_API_KEY env)')
+  .option('--no-summary', 'Skip summary generation')
+  .action(async (opts: Record<string, unknown>) => {
     const state = loadState();
     if (!state) {
       console.log('No saved state found. Run a scan first.');
@@ -329,6 +331,21 @@ program
       console.log('Failed to build result from state.');
       process.exit(1);
     }
+
+    // Auto-generate summary if missing
+    if (!result.summary && opts.summary !== false) {
+      const apiKey = (opts.openaiKey as string) || process.env.OPENAI_API_KEY || '';
+      if (apiKey) {
+        process.stdout.write('📝 Generating summary...');
+        try {
+          result.summary = await generateSummary(result, apiKey, DEFAULT_CONFIG.analysisModel);
+          process.stdout.write('\r                          \r');
+        } catch {
+          process.stdout.write('\r⚠️  Summary generation failed, launching without it.\n');
+        }
+      }
+    }
+
     render(React.createElement(App, { data: result }));
   });
 
