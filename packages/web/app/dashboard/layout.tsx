@@ -35,14 +35,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }}>
         <button
           onClick={() => setSidebarOpen(o => !o)}
-          style={{ background: 'none', border: 'none', color: '#a1a1aa', cursor: 'pointer', fontSize: 20, display: 'none' }}
-          className="max-lg:!inline-block"
+          className="lg:hidden"
+          style={{ background: 'none', border: 'none', color: '#a1a1aa', cursor: 'pointer', fontSize: 20 }}
         >
           ☰
         </button>
         <span style={{ fontSize: 18, fontWeight: 900, letterSpacing: '-0.025em', color: '#fafafa' }}>PR PILOT</span>
         <span style={{ flex: 1, textAlign: 'center', fontFamily: 'monospace', fontSize: 13, color: '#a1a1aa' }}>{data.repo}</span>
-        <span style={{ fontSize: 11, color: '#71717a', display: 'none' }} className="sm:!inline">{new Date(data.analyzedAt).toLocaleString()}</span>
+        <span className="hidden sm:inline" style={{ fontSize: 11, color: '#71717a' }}>{data.analyzedAt ? new Date(data.analyzedAt).toLocaleString() : ''}</span>
       </header>
 
       {/* Mobile overlay */}
@@ -50,15 +50,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div style={{ position: 'fixed', inset: 0, zIndex: 40, background: 'rgba(0,0,0,0.6)' }} className="lg:hidden" onClick={() => setSidebarOpen(false)} />
       )}
 
-      {/* Sidebar */}
+      {/* Sidebar — desktop: always visible; mobile: toggled */}
       <aside
-        style={{
-          position: 'fixed', top: 48, left: 0, zIndex: 50, height: 'calc(100vh - 48px)', width: 240,
-          background: '#18181b', borderRight: '1px solid #27272a',
-          transform: sidebarOpen ? 'translateX(0)' : 'translateX(-100%)',
-          transition: 'transform 0.2s',
-        }}
-        className="lg:!translate-x-0"
+        className={`fixed top-[48px] left-0 z-50 h-[calc(100vh-48px)] w-[240px] border-r transition-transform duration-200 ${sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'}`}
+        style={{ background: '#18181b', borderColor: '#27272a' }}
       >
         <nav style={{ display: 'flex', flexDirection: 'column', gap: 2, padding: 12 }}>
           {links.map(l => {
@@ -83,7 +78,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       {/* Main */}
-      <main style={{ paddingTop: 48 }} className="lg:pl-[240px]">
+      <main className="pt-[48px] lg:pl-[240px]">
         <div style={{ padding: 24 }}>{children}</div>
       </main>
     </div>

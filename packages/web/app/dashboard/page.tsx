@@ -52,7 +52,7 @@ export default function DashboardPage() {
   return (
     <div style={{ maxWidth: 1200 }}>
       {/* Stats Grid */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 16, marginBottom: 24 }} className="max-lg:!grid-cols-2 max-sm:!grid-cols-1">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 mb-6">
         <StatCard label="Total PRs" value={data.totalPRs} />
         <StatCard label="Total Issues" value={data.totalIssues} />
         <StatCard label="Dup Clusters" value={dc.length} />
